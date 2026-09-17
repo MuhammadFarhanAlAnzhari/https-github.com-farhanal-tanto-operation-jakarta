@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from '@vercel/postgres';
 
 const tableName = 'reporting_data';
-const getTableIdentifier = () => sql.identifier([tableName]);
+
 
 const getDatabaseUrl = () => {
   return (
@@ -82,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const rawModuleId = req.query.moduleId;
       const moduleId = Array.isArray(rawModuleId) ? rawModuleId[0] : rawModuleId;
       const rows = await sql`
-        SELECT * FROM ${getTableIdentifier()}
+        SELECT * FROM reporting_data
         WHERE (${moduleId ?? null}::text IS NULL OR module_id = ${String(moduleId || '')})
         ORDER BY created_at DESC
       `;
@@ -97,7 +97,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const result = await sql`
-        INSERT INTO ${getTableIdentifier()} (
+        INSERT INTO reporting_data (
           module_id,
           report_date,
           depot,
@@ -150,7 +150,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const payload = normalizePayload(rest);
       const result = await sql`
-        UPDATE ${getTableIdentifier()}
+        UPDATE reporting_data
         SET
           module_id = ${payload.moduleId},
           mapping = ${JSON.stringify(payload.mapping || {})},
@@ -170,7 +170,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ ok: false, error: 'id is required.' });
       }
 
-      await sql`DELETE FROM ${getTableIdentifier()} WHERE id = ${id}`;
+      await sql`DELETE FROM reporting_data WHERE id = ${id}`;
       return res.status(200).json({ ok: true, deleted: true });
     }
 
