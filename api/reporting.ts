@@ -2,9 +2,21 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from '@vercel/postgres';
 
 const tableName = 'reporting_data';
+const getTableIdentifier = () => sql.identifier([tableName]);
+
+const getDatabaseUrl = () => {
+  return (
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.DATABASE_URL ||
+    process.env.NEON_DATABASE_URL ||
+    ''
+  );
+};
 
 const ensureTable = async () => {
-  if (!process.env.DATABASE_URL) {
+  if (!getDatabaseUrl()) {
     return;
   }
 
@@ -53,23 +65,25 @@ const normalizePayload = (body: any) => {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
+    const databaseUrl = getDatabaseUrl();
     await ensureTable();
 
-    if (!process.env.DATABASE_URL) {
+    if (!databaseUrl) {
       return res.status(200).json({
         ok: true,
         data: [],
-        warning: 'DATABASE_URL is not configured. Using safe empty response for local development.',
+        warning: 'No database connection string is configured for this environment. Using safe empty response for local development.',
       });
     }
 
     const { method } = req;
 
     if (method === 'GET') {
-      const { moduleId } = req.query;
+      const rawModuleId = req.query.moduleId;
+      const moduleId = Array.isArray(rawModuleId) ? rawModuleId[0] : rawModuleId;
       const rows = await sql`
-        SELECT * FROM ${sql(tableName)}
-        WHERE (${moduleId}::text IS NULL OR module_id = ${String(moduleId || '')})
+        SELECT * FROM ${getTableIdentifier()}
+        WHERE (${moduleId ?? null}::text IS NULL OR module_id = ${String(moduleId || '')})
         ORDER BY created_at DESC
       `;
       return res.status(200).json({ ok: true, data: rows.rows });
@@ -83,7 +97,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const result = await sql`
-        INSERT INTO ${sql(tableName)} (
+        INSERT INTO ${getTableIdentifier()} (
           module_id,
           report_date,
           depot,
@@ -136,7 +150,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const payload = normalizePayload(rest);
       const result = await sql`
-        UPDATE ${sql(tableName)}
+        UPDATE ${getTableIdentifier()}
         SET
           module_id = ${payload.moduleId},
           mapping = ${JSON.stringify(payload.mapping || {})},
@@ -156,7 +170,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ ok: false, error: 'id is required.' });
       }
 
-      await sql`DELETE FROM ${sql(tableName)} WHERE id = ${id}`;
+      await sql`DELETE FROM ${getTableIdentifier()} WHERE id = ${id}`;
       return res.status(200).json({ ok: true, deleted: true });
     }
 
